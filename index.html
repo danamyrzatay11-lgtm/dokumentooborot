@@ -78,6 +78,9 @@ const SAMPLE_DOCS = [
   { id: '6', folderId: 'contracts-gph', name: 'ГПХ — копирайтер', type: 'ГПХ', counterparty: 'Назарбеков Е.С.', amount: 80000, startDate: '2026-04-01', endDate: '2026-04-30', fileName: 'gph_copy.pdf', comment: '', status: 'closing' },
   { id: '7', folderId: 'employees-nda', name: 'NDA с разработчиком', type: 'NDA', counterparty: 'Ким Д.В.', amount: null, startDate: '2026-01-10', endDate: '2027-01-10', fileName: 'nda_dev.pdf', comment: '', status: 'active' },
   { id: '8', folderId: 'partners-suppliers', name: 'Договор поставки оборудования', type: 'Договор услуг', counterparty: 'ТОО "ТехноПарт"', amount: 1200000, startDate: '2025-11-01', endDate: '2026-04-30', fileName: 'supply_equip.pdf', comment: 'Гарантия 12 мес.', status: 'overdue' },
+  { id: 'gph-zhi-19', folderId: 'contracts-gph', name: 'ГПХ №19/2026 — Жиенбай Арғын', type: 'ГПХ', counterparty: 'Жиенбай Арғын Бауыржанұлы', amount: 10000, startDate: '2026-06-01', endDate: '2026-12-31', fileName: 'ГПХ_..._Жиенбай_Аргын_(Вайбкодинг).docx', comment: 'Техническое сопровождение обучения вайбкодингу и AI-инструментам. РОО «Федерация по спортивному программированию»', status: 'active' },
+  { id: 'gph-mol-18', folderId: 'contracts-gph', name: 'ГПХ №18/2026 — Молдабаев Даурен', type: 'ГПХ', counterparty: 'Молдабаев Даурен Алтынбекович', amount: 10000, startDate: '2026-05-29', endDate: '2026-12-31', fileName: 'ГПХ_18_2026_Молдабаев Даурен (Вайбкодинг).docx', comment: 'Техническое сопровождение обучения вайбкодингу и AI-инструментам. РОО «Федерация по спортивному программированию»', status: 'active' },
+  { id: 'gph-yes-19', folderId: 'contracts-gph', name: 'ГПХ №19/2026 — Есеркепов Даурен', type: 'ГПХ', counterparty: 'Есеркепов Даурен Кайрулович', amount: 10000, startDate: '2026-06-01', endDate: '2026-12-31', fileName: 'ГПХ_19_2026_Есеркепов Даурен (Вайбкодинг).docx', comment: 'Техническое сопровождение обучения вайбкодингу и AI-инструментам. РОО «Федерация по спортивному программированию»', status: 'active' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -91,7 +94,20 @@ function getDaysUntil(d) { if (!d) return null; return Math.ceil((new Date(d) - 
 function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
 function formatAmount(a) { if (!a) return null; return new Intl.NumberFormat('ru-RU').format(a) + ' ₸'; }
 function useLocalStorage(key, init) {
-  const [v, setV] = useState(() => { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : init; } catch { return init; } });
+  const [v, setV] = useState(() => {
+    try {
+      const s = localStorage.getItem(key);
+      if (!s) return init;
+      const stored = JSON.parse(s);
+      // Merge: add any new items from init that don't exist in stored (by id)
+      if (Array.isArray(stored) && Array.isArray(init)) {
+        const ids = new Set(stored.map(x => x.id));
+        const newItems = init.filter(x => !ids.has(x.id));
+        return newItems.length ? [...stored, ...newItems] : stored;
+      }
+      return stored;
+    } catch { return init; }
+  });
   useEffect(() => { localStorage.setItem(key, JSON.stringify(v)); }, [key, v]);
   return [v, setV];
 }
