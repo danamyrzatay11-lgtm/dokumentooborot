@@ -70,14 +70,6 @@ const DOC_TYPES = ['Договор услуг', 'ГПХ', 'Трудовой', 'N
 const EMPLOYEE_FOLDER_IDS = ['employees-labor', 'employees-personal', 'employees-nda'];
 
 const SAMPLE_DOCS = [
-  { id: '1', folderId: 'contracts-services', name: 'Договор на разработку сайта', type: 'Договор услуг', counterparty: 'ТОО "Веб Студия"', amount: 450000, startDate: '2026-01-15', endDate: '2026-06-15', fileName: 'contract_web.pdf', comment: 'Первый этап — дизайн', status: 'active' },
-  { id: '2', folderId: 'contracts-gph', name: 'ГПХ с дизайнером', type: 'ГПХ', counterparty: 'Сейткали А.Б.', amount: 150000, startDate: '2026-02-01', endDate: '2026-06-20', fileName: 'gph_designer.pdf', comment: '', status: 'signing' },
-  { id: '3', folderId: 'contracts-services', name: 'Договор аренды офиса', type: 'Договор услуг', counterparty: 'БЦ "Алатау"', amount: 280000, startDate: '2026-01-01', endDate: '2026-12-31', fileName: 'rent_office.pdf', comment: 'Ежемесячная оплата до 5-го числа', status: 'active' },
-  { id: '4', folderId: 'employees-labor', name: 'Трудовой договор — Иванова', type: 'Трудовой', counterparty: 'Иванова М.К.', amount: null, startDate: '2025-03-01', endDate: '2026-03-01', fileName: 'labor_ivanova.pdf', comment: '', status: 'renewal' },
-  { id: '5', folderId: 'partners-clients', name: 'Партнёрское соглашение', type: 'Доп. соглашение', counterparty: 'АО "КазМедиа"', amount: 800000, startDate: '2026-01-01', endDate: '2026-06-10', fileName: 'partner_kazmedia.pdf', comment: 'Истекает скоро!', status: 'active' },
-  { id: '6', folderId: 'contracts-gph', name: 'ГПХ — копирайтер', type: 'ГПХ', counterparty: 'Назарбеков Е.С.', amount: 80000, startDate: '2026-04-01', endDate: '2026-04-30', fileName: 'gph_copy.pdf', comment: '', status: 'closing' },
-  { id: '7', folderId: 'employees-nda', name: 'NDA с разработчиком', type: 'NDA', counterparty: 'Ким Д.В.', amount: null, startDate: '2026-01-10', endDate: '2027-01-10', fileName: 'nda_dev.pdf', comment: '', status: 'active' },
-  { id: '8', folderId: 'partners-suppliers', name: 'Договор поставки оборудования', type: 'Договор услуг', counterparty: 'ТОО "ТехноПарт"', amount: 1200000, startDate: '2025-11-01', endDate: '2026-04-30', fileName: 'supply_equip.pdf', comment: 'Гарантия 12 мес.', status: 'overdue' },
   { id: 'cli-kazakh-astyq', folderId: 'partners-clients', name: 'Договор №193/2026/ОУ — QAZAQ-ASTYQ GROUP', type: 'Договор услуг', counterparty: 'ТОО «QAZAQ-ASTYQ GROUP»', amount: 1200000, startDate: '2026-05-28', endDate: '', fileName: 'Договор Казах-Астык (2)-2.docx', comment: 'Vibe 42: Вайбкодинг и применение AI-инструментов. 3 слушателя × 400 000 ₸. Представитель: Ушаков Н.Н.', status: 'active' },
   { id: 'cli-imbir', folderId: 'partners-clients', name: 'Договор — IMBIR GROUP (Grow Vibe)', type: 'Договор услуг', counterparty: 'ТОО «IMBIR GROUP»', amount: 300000, startDate: '2026-05-29', endDate: '', fileName: 'Договор Imbir Group.docx', comment: 'Grow Vibe: Вайбкодинг и создание AI-продуктов. 6 слушателей × 50 000 ₸. Представитель: Кенжебекова А.С.', status: 'active' },
   { id: 'cli-samruk', folderId: 'partners-clients', name: 'Договор — ЧУ Samruk Business Academy', type: 'Договор услуг', counterparty: 'ЧУ Samruk Business Academy', amount: null, startDate: '2026-06-02', endDate: '', fileName: 'Договор ЧУ Samruk Business Academy.pdf', comment: 'Скан-договор (PDF). Дата документа: 02.06.2026.', status: 'active' },
@@ -575,7 +567,7 @@ function Sidebar({ folders, selectedFolder, onSelect, onAddFolder, onRenameFolde
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 function App() {
-  const [docs, setDocs] = useLocalStorage('docflow_docs', SAMPLE_DOCS);
+  const [docs, setDocs] = useLocalStorage('docflow_docs_v2', SAMPLE_DOCS);
   const [folders, setFolders] = useLocalStorage('docflow_folders', FOLDER_TREE);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [view, setView] = useState('grid');
