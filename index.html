@@ -32,6 +32,7 @@ const { useState, useEffect, useMemo } = React;
 
 const FOLDER_TREE = [
   { id: 'clients', label: 'Клиенты', icon: '🏢', children: [
+    { id: 'clients-presale', label: 'Пресейл и КП', icon: '📨' },
     { id: 'clients-may26', label: 'Май 2026', icon: '📂' },
     { id: 'clients-jun26', label: 'Июнь 2026', icon: '📂' },
     { id: 'clients-jul26', label: 'Июль 2026', icon: '📂' },
@@ -68,7 +69,42 @@ const EMPLOYEE_STATUSES = [
   { id: 'archive', label: 'Архив',       color: 'bg-gray-500 text-white',      dot: 'bg-gray-300' },
 ];
 
-const DOC_TYPES = ['Договор услуг', 'ГПХ', 'Трудовой', 'NDA', 'Акт', 'Доп. соглашение', 'Личное дело', 'Прочее'];
+const DOC_TYPES = ['Договор услуг', 'ГПХ', 'Лицензионный договор', 'КП', 'Резюме тренера', 'Программа обучения', 'Акт', 'Счёт', 'Доп. соглашение', 'Прочее'];
+
+// ─── Цепочки действий ────────────────────────────────────────────────────────
+const STEPS_CLIENT = [
+  { id: 'contract', label: 'Договор подписан',   icon: '📄' },
+  { id: 'invoice',  label: 'Счёт выставлен',     icon: '🧾' },
+  { id: 'payment',  label: 'Оплата получена',    icon: '💰' },
+  { id: 'training', label: 'Обучение проведено', icon: '🎓' },
+  { id: 'act_sent', label: 'Акт выставлен',      icon: '📝' },
+  { id: 'act_ok',   label: 'Акт подписан',       icon: '✅' },
+];
+const STEPS_PRESALE = [
+  { id: 'kp',       label: 'КП отправлено',      icon: '📨' },
+  { id: 'meeting',  label: 'Встреча проведена',  icon: '🤝' },
+  { id: 'docs',     label: 'Документы собраны',  icon: '📋' },
+  { id: 'contract', label: 'Договор заключён',   icon: '✍️' },
+];
+const STEPS_GPH = [
+  { id: 'contract', label: 'Договор подписан',   icon: '📄' },
+  { id: 'report',   label: 'Отчёт за месяц сдан',icon: '📊' },
+  { id: 'act',      label: 'Акт выставлен',      icon: '📝' },
+  { id: 'payment',  label: 'Выплата на руки',    icon: '💵' },
+];
+
+function getStepsDef(folderId) {
+  if (!folderId) return null;
+  if (folderId === 'clients-presale') return STEPS_PRESALE;
+  if (/^clients-/.test(folderId)) return STEPS_CLIENT;
+  if (folderId === 'team-engineers' || folderId === 'team-coaches') return STEPS_GPH;
+  return null;
+}
+function defaultSteps(folderId) {
+  const def = getStepsDef(folderId);
+  if (!def) return null;
+  return Object.fromEntries(def.map(s => [s.id, false]));
+}
 const EMPLOYEE_FOLDER_IDS = ['team-engineers', 'team-coaches', 'team-reports-may', 'team-reports-jun'];
 
 const SAMPLE_DOCS = [
@@ -76,26 +112,29 @@ const SAMPLE_DOCS = [
   { id: 'cli-may-qazaq', folderId: 'clients-may26',
     name: 'Договор №193/2026/ОУ — QAZAQ-ASTYQ GROUP',
     type: 'Договор услуг', counterparty: 'ТОО «QAZAQ-ASTYQ GROUP»',
-    amount: 1200000, startDate: '2026-05-28', endDate: '',
+    amount: 1200000, startDate: '2026-05-28', endDate: '2026-05-31',
     fileName: 'Договор Казах-Астык (2)-2.docx',
-    comment: '✅ Счёт №2 от 28.05.2026 выставлен (1 200 000 ₸)\n3 слушателя × 400 000 ₸ | Vibe 42\nПредставитель: Ушаков Н.Н.\n⏳ Акт: ожидается от бухгалтера',
-    status: 'closing' },
+    comment: '3 слушателя × 400 000 ₸ | Vibe 42\nСчёт №2 от 28.05.2026\nПредставитель: Ушаков Н.Н.',
+    status: 'done',
+    steps: { contract: true, invoice: true, payment: true, training: true, act_sent: true, act_ok: true } },
   { id: 'cli-may-imbir', folderId: 'clients-may26',
     name: 'Договор №21 — IMBIR GROUP (Grow Vibe)',
     type: 'Договор услуг', counterparty: 'ТОО «IMBIR GROUP»',
-    amount: 300000, startDate: '2026-05-29', endDate: '',
+    amount: 300000, startDate: '2026-05-29', endDate: '2026-05-31',
     fileName: 'Договор Imbir Group.docx',
-    comment: '✅ Счёт №3 от 29.05.2026 выставлен (300 000 ₸)\n6 слушателей × 50 000 ₸ | Grow Vibe\nПредставитель: Кенжебекова А.С.\n⏳ Акт: ожидается от бухгалтера',
-    status: 'closing' },
+    comment: '6 слушателей × 50 000 ₸ | Grow Vibe\nСчёт №3 от 29.05.2026\nПредставитель: Кенжебекова А.С.',
+    status: 'done',
+    steps: { contract: true, invoice: true, payment: true, training: true, act_sent: true, act_ok: true } },
 
-  // ── Клиенты Июнь 2026 ─────────────────────────────────────────────────────
-  { id: 'cli-jun-samruk', folderId: 'clients-jun26',
-    name: 'Договор — ЧУ Samruk Business Academy',
-    type: 'Договор услуг', counterparty: 'ЧУ Samruk Business Academy',
+  // ── Пресейл Samruk ─────────────────────────────────────────────────────────
+  { id: 'cli-presale-samruk', folderId: 'clients-presale',
+    name: 'Пресейл — ЧУ Samruk Business Academy',
+    type: 'КП', counterparty: 'ЧУ Samruk Business Academy',
     amount: null, startDate: '2026-06-02', endDate: '',
     fileName: 'Договор ЧУ Samruk Business Academy.pdf',
-    comment: 'Скан-договор (PDF). Сумма — уточните у бухгалтера.\n⏳ Счёт: не выставлен\n⏳ Оплата: не получена',
-    status: 'signing' },
+    comment: 'Договор ещё не подписан.\nЗдесь хранятся: КП, резюме тренеров, программа обучения.\nДобавьте файлы через кнопку «Добавить».',
+    status: 'initiation',
+    steps: { kp: false, meeting: false, docs: false, contract: false } },
 
   // ── Инженеры ГПХ ──────────────────────────────────────────────────────────
   { id: 'eng-zhi', folderId: 'team-engineers',
@@ -104,28 +143,28 @@ const SAMPLE_DOCS = [
     amount: 10000, startDate: '2026-06-01', endDate: '2026-12-31',
     fileName: 'ГПХ_..._Жиенбай_Аргын_(Вайбкодинг).docx',
     comment: 'ИИН: 030526551042\nУД: №045990518 от 05.06.2019\nАдрес: г. Астана, ул. Туран, д. 71, кв. 213\n10 000 ₸/участник',
-    status: 'active' },
+    status: 'active', steps: { contract: true, report: false, act: false, payment: false } },
   { id: 'eng-mol', folderId: 'team-engineers',
     name: 'ГПХ №18/2026 — Молдабаев Даурен',
     type: 'ГПХ', counterparty: 'Молдабаев Даурен Алтынбекович',
     amount: 10000, startDate: '2026-05-29', endDate: '2026-12-31',
     fileName: 'ГПХ_18_2026_Молдабаев Даурен (Вайбкодинг).docx',
     comment: 'ИИН: 991030350621\nУД: №063146970 от 02.03.2026\nАдрес: г. Астана, ул. Сауран, д. 10Б, кв. 168\n10 000 ₸/участник',
-    status: 'active' },
+    status: 'active', steps: { contract: true, report: false, act: false, payment: false } },
   { id: 'eng-yes', folderId: 'team-engineers',
     name: 'ГПХ №19/2026 — Есеркепов Даурен',
     type: 'ГПХ', counterparty: 'Есеркепов Даурен Кайрулович',
     amount: 10000, startDate: '2026-06-01', endDate: '2026-12-31',
     fileName: 'ГПХ_19_2026_Есеркепов Даурен (Вайбкодинг).docx',
     comment: 'ИИН: 890720351578\nУД: №058658088 от 26.07.2024\nАдрес: г. Астана, ул. Казыбек би, д. 15, кв. 14\n10 000 ₸/участник',
-    status: 'active' },
+    status: 'active', steps: { contract: true, report: false, act: false, payment: false } },
   { id: 'eng-mit', folderId: 'team-engineers',
     name: 'ГПХ №20/2026 — Митрошина Алина',
     type: 'ГПХ', counterparty: 'Митрошина Алина Александровна',
     amount: 10000, startDate: '2026-06-01', endDate: '2026-12-31',
     fileName: 'ГПХ_20_2026_Митрошина_Алина_(Вайбкодинг).docx',
     comment: 'ИИН: 031028650630\nУД: №046847524 от 07.11.2019\nАдрес: г. Астана, ул. Кайым Мухамедханова, д. 4б, кв. 115\n10 000 ₸/участник',
-    status: 'active' },
+    status: 'active', steps: { contract: true, report: false, act: false, payment: false } },
 
   // ── Авторы методологии ────────────────────────────────────────────────────
   { id: 'auth-license-docx', folderId: 'authors-license',
@@ -317,7 +356,42 @@ function DocForm({ doc, folderId, folders, onSave, onClose }) {
 
 // ─── DocDetail ────────────────────────────────────────────────────────────────
 
-function DocDetail({ doc, folders, onClose, onEdit, onDelete, onStatusChange }) {
+function StepsChecklist({ doc, onToggle }) {
+  const def = getStepsDef(doc.folderId);
+  if (!def) return null;
+  const steps = doc.steps || defaultSteps(doc.folderId) || {};
+  const done = def.filter(s => steps[s.id]).length;
+  const pct = Math.round((done / def.length) * 100);
+  return (
+    <div className="bg-gradient-to-br from-violet-50 to-indigo-50 rounded-2xl p-4 border border-violet-100 mb-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-bold text-violet-600 uppercase tracking-wide">Цепочка действий</span>
+        <span className="text-xs font-bold text-violet-500">{done}/{def.length} выполнено</span>
+      </div>
+      <div className="w-full bg-violet-100 rounded-full h-1.5 mb-3">
+        <div className="bg-gradient-to-r from-violet-500 to-indigo-500 h-1.5 rounded-full transition-all" style={{width: pct + '%'}}></div>
+      </div>
+      <div className="space-y-2">
+        {def.map(s => {
+          const checked = !!steps[s.id];
+          return (
+            <button key={s.id} onClick={() => onToggle(doc.id, s.id, !checked)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition text-left ${checked ? 'bg-emerald-50 border border-emerald-200' : 'bg-white border border-gray-200 hover:border-violet-300'}`}>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${checked ? 'bg-emerald-500 text-white' : 'bg-gray-100 border-2 border-gray-300'}`}>
+                {checked ? '✓' : ''}
+              </div>
+              <span className={checked ? 'line-through text-gray-400 font-medium' : 'text-gray-700 font-medium'}>
+                {s.icon} {s.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DocDetail({ doc, folders, onClose, onEdit, onDelete, onStatusChange, onStepToggle }) {
   const isEmp = EMPLOYEE_FOLDER_IDS.includes(doc.folderId);
   const statuses = isEmp ? EMPLOYEE_STATUSES : CONTRACT_STATUSES;
   const folder = flattenTree(folders).find(f => f.id === doc.folderId);
@@ -341,6 +415,7 @@ function DocDetail({ doc, folders, onClose, onEdit, onDelete, onStatusChange }) 
         <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none mt-1">×</button>
       </div>
       <div className="p-6">
+        <StepsChecklist doc={doc} onToggle={onStepToggle} />
         {!isEmp && <ProgressBar statusId={doc.status} />}
 
         {(isOverdue || isExpiringSoon) && (
@@ -922,8 +997,8 @@ function ContractGenerator({ onClose }) {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 function App() {
-  const [docs, setDocs] = useLocalStorage('docflow_docs_v3', SAMPLE_DOCS);
-  const [folders, setFolders] = useLocalStorage('docflow_folders_v3', FOLDER_TREE);
+  const [docs, setDocs] = useLocalStorage('docflow_docs_v4', SAMPLE_DOCS);
+  const [folders, setFolders] = useLocalStorage('docflow_folders_v4', FOLDER_TREE);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [view, setView] = useState('grid');
   const [search, setSearch] = useState('');
@@ -963,6 +1038,10 @@ function App() {
   const changeStatus = (id, status) => {
     setDocs(prev => prev.map(d => d.id === id ? { ...d, status } : d));
     setDetailDoc(prev => prev?.id === id ? { ...prev, status } : prev);
+  };
+  const toggleStep = (docId, stepId, val) => {
+    setDocs(prev => prev.map(d => d.id === docId ? { ...d, steps: { ...(d.steps || defaultSteps(d.folderId) || {}), [stepId]: val } } : d));
+    setDetailDoc(prev => prev?.id === docId ? { ...prev, steps: { ...(prev.steps || defaultSteps(prev.folderId) || {}), [stepId]: val } } : prev);
   };
   const addFolder = (parentId, label) => setFolders(prev => prev.map(g => g.id === parentId ? { ...g, children: [...(g.children||[]), { id: `${parentId}-${Date.now()}`, label, icon: '📂' }] } : g));
   const renameFolder = (id, label) => setFolders(prev => prev.map(g => ({ ...g, children: (g.children||[]).map(c => c.id === id ? { ...c, label } : c) })));
@@ -1063,7 +1142,7 @@ function App() {
         <Modal onClose={() => setDetailDoc(null)}>
           <DocDetail doc={detailDoc} folders={folders} onClose={() => setDetailDoc(null)}
             onEdit={doc => { setDetailDoc(null); setEditDoc(doc); }}
-            onDelete={deleteDoc} onStatusChange={changeStatus} />
+            onDelete={deleteDoc} onStatusChange={changeStatus} onStepToggle={toggleStep} />
         </Modal>
       )}
     </div>
