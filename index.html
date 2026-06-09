@@ -8,6 +8,7 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -564,6 +565,293 @@ function Sidebar({ folders, selectedFolder, onSelect, onAddFolder, onRenameFolde
   );
 }
 
+// ─── Contract Generator ───────────────────────────────────────────────────────
+
+function escapeXml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function replaceInDocxXml(xml, replacements) {
+  // Process paragraph by paragraph, merging runs so split text is handled
+  return xml.replace(/(<w:p(?:\s[^>]*)?>)([\s\S]*?)(<\/w:p>)/g, (match, open, content, close) => {
+    // Concatenate all w:t text in this paragraph
+    const fullText = content.replace(/<w:t(?:[^>]*)>([\s\S]*?)<\/w:t>/g, '$1');
+    let newText = fullText;
+    let changed = false;
+    for (const [from, to] of replacements) {
+      if (from.trim() && newText.includes(from.trim())) {
+        newText = newText.split(from.trim()).join(to);
+        changed = true;
+      }
+    }
+    if (!changed) return match;
+    // Extract paragraph props and first run props for formatting
+    const pPr = content.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || '';
+    const firstRun = content.match(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/)?.[0] || '';
+    const rPr = firstRun.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] || '';
+    const newRun = `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(newText)}</w:t></w:r>`;
+    return `${open}${pPr}${newRun}${close}`;
+  });
+}
+
+async function generateDocx(templateFile, replacements) {
+  const arrayBuffer = await templateFile.arrayBuffer();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  // Replace in document.xml
+  let docXml = await zip.file('word/document.xml').async('string');
+  docXml = replaceInDocxXml(docXml, replacements);
+  zip.file('word/document.xml', docXml);
+  // Also replace in headers/footers
+  for (const path of Object.keys(zip.files)) {
+    if (/word\/(header|footer)\d*\.xml$/.test(path)) {
+      let c = await zip.file(path).async('string');
+      c = replaceInDocxXml(c, replacements);
+      zip.file(path, c);
+    }
+  }
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
+function detectFields(xmlText) {
+  // Extract readable text from XML
+  const texts = [];
+  const paraMatches = xmlText.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g) || [];
+  for (const p of paraMatches) {
+    const t = (p.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
+      .map(m => m.replace(/<[^>]+>/g, '')).join('');
+    if (t.trim()) texts.push(t.trim());
+  }
+  const full = texts.join(' ');
+
+  const fields = [];
+  // Contract number
+  const numMatch = full.match(/№\s*([\w/]+)/);
+  if (numMatch) fields.push({ key: 'num', label: 'Номер договора', detected: numMatch[1] });
+  // Date of contract
+  const dateMatch = full.match(/«(\d+)»\s+(\w+)\s+(\d{4})\s*г/);
+  if (dateMatch) fields.push({ key: 'date', label: 'Дата договора', detected: `«${dateMatch[1]}» ${dateMatch[2]} ${dateMatch[3]} г` });
+  // Contractor name — Cyrillic capitalized words after "и " or before "гражданин"
+  const nameMatch = full.match(/,\s+и\s+([А-ЯӘҒҚҢӨҰҮІа-яәғқңөұүі]+\s+[А-ЯӘҒҚҢӨҰҮІ][а-яәғқңөұүі]+(?:\s+[А-ЯӘҒҚҢӨҰҮІ][а-яәғқңөұүі]+)?)\s*,?\s*гражданин/);
+  if (nameMatch) fields.push({ key: 'name', label: 'ФИО исполнителя', detected: nameMatch[1].trim() });
+  // IIN
+  const iinMatch = full.match(/ИИН\s*([0-9]{12})/);
+  if (iinMatch) fields.push({ key: 'iin', label: 'ИИН', detected: iinMatch[1] });
+  // ID number
+  const idMatch = full.match(/удостоверение личности[^0-9]*([0-9]{9})/i);
+  if (idMatch) fields.push({ key: 'id', label: 'Номер удостоверения', detected: idMatch[1] });
+  // ID issue date
+  const idDateMatch = full.match(/(?:выдано|выдан)\s+МВД\s+РК\s+от\s+([\d.]+\s*г?\.?)/i);
+  if (idDateMatch) fields.push({ key: 'iddate', label: 'Дата выдачи УД', detected: idDateMatch[1].trim() });
+  // Address
+  const addrMatch = full.match(/адрес[^:]*:\s*([^,\.]+(?:,[^,\.]+){1,4})/i);
+  if (addrMatch) fields.push({ key: 'addr', label: 'Адрес регистрации', detected: addrMatch[1].trim() });
+
+  return fields;
+}
+
+function ContractGenerator({ onClose }) {
+  const [step, setStep] = useState(1);
+  const [file, setFile] = useState(null);
+  const [fields, setFields] = useState([]);
+  const [newValues, setNewValues] = useState({});
+  const [customRows, setCustomRows] = useState([{ from: '', to: '' }]);
+  const [loading, setLoading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = React.useRef();
+
+  const handleFile = async (f) => {
+    if (!f || !f.name.endsWith('.docx')) { alert('Загрузите файл .docx'); return; }
+    setFile(f);
+    setLoading(true);
+    try {
+      const ab = await f.arrayBuffer();
+      const zip = await JSZip.loadAsync(ab);
+      const xml = await zip.file('word/document.xml').async('string');
+      const detected = detectFields(xml);
+      setFields(detected);
+      const vals = {};
+      detected.forEach(d => { vals[d.key] = ''; });
+      setNewValues(vals);
+      setStep(2);
+    } catch(e) { alert('Ошибка чтения файла: ' + e.message); }
+    setLoading(false);
+  };
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    try {
+      // Build replacements list: [from, to]
+      const replacements = [];
+      fields.forEach(f => {
+        if (f.detected && newValues[f.key]?.trim()) {
+          replacements.push([f.detected, newValues[f.key].trim()]);
+        }
+      });
+      customRows.forEach(r => {
+        if (r.from.trim() && r.to.trim()) replacements.push([r.from, r.to]);
+      });
+      if (!replacements.length) { alert('Заполните хотя бы одно поле для замены'); setLoading(false); return; }
+      const blob = await generateDocx(file, replacements);
+      // Download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const baseName = file.name.replace('.docx', '');
+      const newName = newValues['name']?.trim() || 'новый';
+      a.download = `${baseName}_${newName}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStep(3);
+    } catch(e) { alert('Ошибка генерации: ' + e.message); }
+    setLoading(false);
+  };
+
+  const inp = "w-full border-2 border-violet-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 bg-white";
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="p-6 bg-gradient-to-r from-fuchsia-600 to-violet-600 rounded-t-3xl flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white">⚡ Генератор договоров</h2>
+          <p className="text-fuchsia-200 text-xs mt-1">Загрузите шаблон — система заменит данные автоматически</p>
+        </div>
+        <button onClick={onClose} className="text-white/70 hover:text-white text-2xl">×</button>
+      </div>
+
+      {/* Steps indicator */}
+      <div className="px-6 pt-5 flex items-center gap-2">
+        {[{n:1,label:'Шаблон'},{n:2,label:'Данные'},{n:3,label:'Готово'}].map((s,i) => (
+          <React.Fragment key={s.n}>
+            <div className={`flex items-center gap-2 ${step >= s.n ? 'text-violet-700' : 'text-gray-300'}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${step > s.n ? 'bg-green-500 text-white' : step === s.n ? 'bg-violet-600 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                {step > s.n ? '✓' : s.n}
+              </div>
+              <span className="text-xs font-semibold hidden sm:block">{s.label}</span>
+            </div>
+            {i < 2 && <div className={`flex-1 h-0.5 ${step > s.n ? 'bg-green-400' : 'bg-gray-200'}`}></div>}
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div className="p-6">
+        {/* Step 1: Upload */}
+        {step === 1 && (
+          <div>
+            <p className="text-sm text-gray-600 mb-4">Загрузите шаблон договора в формате <strong>.docx</strong>. Система автоматически найдёт ФИО, ИИН, номер договора и другие поля.</p>
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
+              onClick={() => fileRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition ${dragOver ? 'border-violet-500 bg-violet-50' : 'border-violet-200 hover:border-violet-400 hover:bg-violet-50/50'}`}>
+              <div className="text-5xl mb-3">📄</div>
+              <div className="font-bold text-violet-700 mb-1">Перетащите файл сюда</div>
+              <div className="text-sm text-violet-400">или нажмите для выбора .docx файла</div>
+              <input ref={fileRef} type="file" accept=".docx" className="hidden" onChange={e => handleFile(e.target.files[0])} />
+            </div>
+            {loading && <div className="mt-4 text-center text-violet-500 font-medium animate-pulse">Анализирую шаблон...</div>}
+          </div>
+        )}
+
+        {/* Step 2: Fill fields */}
+        {step === 2 && (
+          <div>
+            <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-2">
+              <span className="text-lg">📎</span>
+              <div>
+                <div className="text-sm font-bold text-violet-800">{file?.name}</div>
+                <div className="text-xs text-violet-500">Найдено полей: {fields.length}</div>
+              </div>
+              <button onClick={() => setStep(1)} className="ml-auto text-xs text-violet-500 hover:text-violet-700 underline">Сменить</button>
+            </div>
+
+            {fields.length > 0 ? (
+              <div className="space-y-4 mb-6">
+                <p className="text-xs font-bold text-violet-500 uppercase tracking-wide">Автоматически найденные поля</p>
+                {fields.map(f => (
+                  <div key={f.key} className="grid grid-cols-2 gap-3 items-start">
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-1">{f.label} <span className="text-violet-400">(в шаблоне)</span></div>
+                      <div className="bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 font-mono truncate">{f.detected}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-1">{f.label} <span className="text-emerald-500">(новое значение)</span></div>
+                      <input className={inp} placeholder={`Новый ${f.label.toLowerCase()}...`}
+                        value={newValues[f.key] || ''} onChange={e => setNewValues(v => ({ ...v, [f.key]: e.target.value }))} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 text-sm text-amber-700">
+                ⚠️ Стандартные поля не найдены. Добавьте замены вручную ниже.
+              </div>
+            )}
+
+            {/* Custom replacements */}
+            <div className="border-t border-violet-100 pt-4">
+              <p className="text-xs font-bold text-violet-500 uppercase tracking-wide mb-3">Дополнительные замены</p>
+              <div className="space-y-2">
+                {customRows.map((row, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <input className={inp + " flex-1"} placeholder="Найти в шаблоне..." value={row.from}
+                      onChange={e => setCustomRows(rows => rows.map((r,j) => j===i ? {...r,from:e.target.value} : r))} />
+                    <span className="text-violet-400 font-bold">→</span>
+                    <input className={inp + " flex-1"} placeholder="Заменить на..." value={row.to}
+                      onChange={e => setCustomRows(rows => rows.map((r,j) => j===i ? {...r,to:e.target.value} : r))} />
+                    {customRows.length > 1 && (
+                      <button onClick={() => setCustomRows(rows => rows.filter((_,j) => j!==i))} className="text-red-400 hover:text-red-600 text-lg">×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setCustomRows(r => [...r, {from:'',to:''}])}
+                className="mt-2 text-xs text-violet-600 hover:text-violet-800 font-bold flex items-center gap-1">
+                <span>+</span> Добавить поле
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Done */}
+        {step === 3 && (
+          <div className="text-center py-6">
+            <div className="text-6xl mb-4">🎉</div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Договор сгенерирован!</h3>
+            <p className="text-sm text-gray-500 mb-6">Файл скачан на ваш компьютер. Проверьте его перед отправкой.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => { setStep(1); setFile(null); setFields([]); setNewValues({}); setCustomRows([{from:'',to:''}]); }}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold border-2 border-violet-200 text-violet-700 hover:bg-violet-50">
+                ⚡ Новый договор
+              </button>
+              <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-violet-600 to-indigo-600 text-white">
+                Закрыть
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer buttons */}
+      {step === 2 && (
+        <div className="px-6 pb-6 flex justify-between items-center border-t border-violet-100 pt-4">
+          <button onClick={() => setStep(1)} className="px-4 py-2 text-sm font-medium text-violet-600 hover:bg-violet-50 rounded-xl transition">← Назад</button>
+          <button onClick={handleGenerate} disabled={loading}
+            className="px-6 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white hover:from-fuchsia-700 hover:to-violet-700 transition shadow-lg disabled:opacity-50 flex items-center gap-2">
+            {loading ? <span className="animate-spin">⏳</span> : '⚡'} {loading ? 'Генерирую...' : 'Сгенерировать и скачать'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 function App() {
@@ -579,6 +867,7 @@ function App() {
   const [editDoc, setEditDoc] = useState(null);
   const [detailDoc, setDetailDoc] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showGenerator, setShowGenerator] = useState(false);
 
   const allFolders = useMemo(() => flattenTree(folders), [folders]);
   const currentFolderInfo = allFolders.find(f => f.id === selectedFolder);
@@ -633,6 +922,10 @@ function App() {
             <input className="w-full max-w-md pl-9 pr-3 py-2 text-sm border-2 border-violet-100 rounded-xl focus:outline-none focus:border-violet-400 bg-violet-50/50 text-gray-700 font-medium placeholder-violet-300"
               placeholder="Поиск по названию или контрагенту..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+          <button onClick={() => setShowGenerator(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white text-sm font-bold rounded-xl hover:from-fuchsia-600 hover:to-violet-600 transition shadow-lg shadow-fuchsia-200 whitespace-nowrap">
+            <span>⚡</span> <span className="hidden sm:inline">Генератор</span>
+          </button>
           <button onClick={() => { setEditDoc(null); setShowForm(true); }}
             className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-bold rounded-xl hover:from-violet-700 hover:to-indigo-700 transition shadow-lg shadow-violet-200 whitespace-nowrap">
             <span className="text-base leading-none">✨</span> Добавить
@@ -689,6 +982,11 @@ function App() {
         </div>
       </main>
 
+      {showGenerator && (
+        <Modal onClose={() => setShowGenerator(false)}>
+          <ContractGenerator onClose={() => setShowGenerator(false)} />
+        </Modal>
+      )}
       {(showForm || editDoc) && (
         <Modal onClose={() => { setShowForm(false); setEditDoc(null); }}>
           <DocForm doc={editDoc} folderId={selectedFolder} folders={allFolders} onSave={saveDoc} onClose={() => { setShowForm(false); setEditDoc(null); }} />
