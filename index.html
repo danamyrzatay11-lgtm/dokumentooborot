@@ -139,7 +139,7 @@ const SAMPLE_DOCS = [
     name: 'Резюме тренера — Нурбекова Галия Багдатовна',
     type: 'Резюме тренера', counterparty: 'ЧУ Samruk Business Academy',
     amount: null, startDate: '2026-06-02', endDate: '',
-    fileName: 'Галия Багдат.pdf', comment: 'Автор методологии Vibe 42. Тренер.',
+    fileName: 'Галия Багдат.pdf', comment: 'Автор методологии Vibe 42. 4-й коуч.',
     status: 'initiation', steps: { kp: true, meeting: false, docs: false, contract: false } },
   { id: 'cv-dauren-yes', folderId: 'clients-presale',
     name: 'Резюме тренера — Есеркепов Даурен Кайрулович',
@@ -181,13 +181,13 @@ const SAMPLE_DOCS = [
     name: 'Резюме тренера — Анар Утешова',
     type: 'Резюме тренера', counterparty: 'ЧУ Samruk Business Academy',
     amount: null, startDate: '2026-06-02', endDate: '',
-    fileName: 'Анар Утешова.docx', comment: 'Коуч / тренер.',
+    fileName: 'Анар Утешова.docx', comment: 'Коуч.',
     status: 'initiation', steps: { kp: true, meeting: false, docs: false, contract: false } },
   { id: 'cv-marat', folderId: 'clients-presale',
     name: 'Резюме тренера — Марат Даулет',
     type: 'Резюме тренера', counterparty: 'ЧУ Samruk Business Academy',
     amount: null, startDate: '2026-06-02', endDate: '',
-    fileName: 'Резюме Марат Даулет (1).docx', comment: 'Коуч / тренер.',
+    fileName: 'Резюме Марат Даулет (1).docx', comment: '5-й инженер. Договор ГПХ в работе.',
     status: 'initiation', steps: { kp: true, meeting: false, docs: false, contract: false } },
 
   // ── Инженеры ГПХ ──────────────────────────────────────────────────────────
@@ -219,6 +219,45 @@ const SAMPLE_DOCS = [
     fileName: 'ГПХ_20_2026_Митрошина_Алина_(Вайбкодинг).docx',
     comment: 'ИИН: 031028650630\nУД: №046847524 от 07.11.2019\nАдрес: г. Астана, ул. Кайым Мухамедханова, д. 4б, кв. 115\n10 000 ₸/участник',
     status: 'active', steps: { contract: true, report: false, act: false, payment: false } },
+
+  // ── Инженер 5 (договор в работе) ─────────────────────────────────────────
+  { id: 'eng-marat', folderId: 'team-engineers',
+    name: 'ГПХ — Марат Даулет (договор в работе)',
+    type: 'ГПХ', counterparty: 'Марат Даулет',
+    amount: 10000, startDate: '2026-06-01', endDate: '2026-12-31',
+    fileName: 'Резюме Марат Даулет (1).docx',
+    comment: '5-й инженер. Договор ГПХ ещё не подписан.\nРезюме в папке Пресейл и КП.',
+    status: 'draft', steps: { contract: false, report: false, act: false, payment: false } },
+
+  // ── Коучи (договоры в работе) ─────────────────────────────────────────────
+  { id: 'coach-togzhan', folderId: 'team-coaches',
+    name: 'ГПХ — Нурмаганбетова Тогжан (договор в работе)',
+    type: 'ГПХ', counterparty: 'Нурмаганбетова Тогжан',
+    amount: null, startDate: '2026-06-01', endDate: '2026-12-31',
+    fileName: 'Нурмаганбетова Тогжан.pdf',
+    comment: 'Коуч. Договор ГПХ в работе.\nРезюме в папке Пресейл и КП.',
+    status: 'draft', steps: { contract: false, report: false, act: false, payment: false } },
+  { id: 'coach-tatyana', folderId: 'team-coaches',
+    name: 'ГПХ — Сайфарова Татьяна (договор в работе)',
+    type: 'ГПХ', counterparty: 'Сайфарова Татьяна',
+    amount: null, startDate: '2026-06-01', endDate: '2026-12-31',
+    fileName: 'Сайфарова Татьяна_CV.pdf',
+    comment: 'Коуч. Договор ГПХ в работе.\nРезюме в папке Пресейл и КП.',
+    status: 'draft', steps: { contract: false, report: false, act: false, payment: false } },
+  { id: 'coach-anar', folderId: 'team-coaches',
+    name: 'ГПХ — Анар Утешова (договор в работе)',
+    type: 'ГПХ', counterparty: 'Анар Утешова',
+    amount: null, startDate: '2026-06-01', endDate: '2026-12-31',
+    fileName: 'Анар Утешова.docx',
+    comment: 'Коуч. Договор ГПХ в работе.\nРезюме в папке Пресейл и КП.',
+    status: 'draft', steps: { contract: false, report: false, act: false, payment: false } },
+  { id: 'coach-galia', folderId: 'team-coaches',
+    name: 'ГПХ — Нурбекова Галия Багдатовна (договор в работе)',
+    type: 'ГПХ', counterparty: 'Нурбекова Галия Багдатовна',
+    amount: null, startDate: '2026-06-01', endDate: '2026-12-31',
+    fileName: 'Галия Багдат.pdf',
+    comment: 'Коуч + автор методологии Vibe 42.\nИИН: 701107400176. Договор ГПХ в работе.',
+    status: 'draft', steps: { contract: false, report: false, act: false, payment: false } },
 
   // ── Авторы методологии ────────────────────────────────────────────────────
   { id: 'auth-license-docx', folderId: 'authors-license',
@@ -1051,8 +1090,8 @@ function ContractGenerator({ onClose }) {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 function App() {
-  const [docs, setDocs] = useLocalStorage('docflow_docs_v5', SAMPLE_DOCS);
-  const [folders, setFolders] = useLocalStorage('docflow_folders_v5', FOLDER_TREE);
+  const [docs, setDocs] = useLocalStorage('docflow_docs_v6', SAMPLE_DOCS);
+  const [folders, setFolders] = useLocalStorage('docflow_folders_v6', FOLDER_TREE);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [view, setView] = useState('grid');
   const [search, setSearch] = useState('');
