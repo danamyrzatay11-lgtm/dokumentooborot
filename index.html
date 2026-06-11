@@ -10,6 +10,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -892,14 +893,44 @@ function detectFields(xmlText) {
 
 // ─── OCR helpers ──────────────────────────────────────────────────────────────
 
-async function runOCR(imageFile, onProgress) {
+async function pdfPageToBlob(pdfFile, pageNum = 1) {
+  const pdfjsLib = window['pdfjs-dist/build/pdf'];
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const ab = await pdfFile.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  const page = await pdf.getPage(pageNum);
+  // Try text layer first
+  const tc = await page.getTextContent();
+  const extracted = tc.items.map(i => i.str).join(' ').trim();
+  if (extracted.length > 30) return { text: extracted, blob: null };
+  // Scanned — render to canvas at 2x scale for better OCR
+  const vp = page.getViewport({ scale: 2.5 });
+  const canvas = document.createElement('canvas');
+  canvas.width = vp.width; canvas.height = vp.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  return { text: null, blob };
+}
+
+async function runOCR(source, onProgress) {
   const { createWorker } = Tesseract;
   const worker = await createWorker('rus', 1, {
     logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(Math.round(m.progress * 100)); }
   });
-  const { data: { text } } = await worker.recognize(imageFile);
+  const { data: { text } } = await worker.recognize(source);
   await worker.terminate();
   return text;
+}
+
+async function extractIDText(file, onProgress) {
+  if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+    onProgress && onProgress(10);
+    const { text, blob } = await pdfPageToBlob(file, 1);
+    if (text) { onProgress && onProgress(100); return text; }
+    onProgress && onProgress(20);
+    return runOCR(blob, p => onProgress && onProgress(20 + Math.round(p * 0.8)));
+  }
+  return runOCR(file, onProgress);
 }
 
 function parseIDCard(text) {
@@ -961,11 +992,11 @@ function ContractGenerator({ onClose }) {
   const handleIDScan = async (f) => {
     if (!f) return;
     setIdFile(f);
-    setIdPreview(URL.createObjectURL(f));
+    setIdPreview(null); // PDF — no image preview
     setOcrLoading(true);
     setOcrProgress(0);
     try {
-      const text = await runOCR(f, setOcrProgress);
+      const text = await extractIDText(f, setOcrProgress);
       const parsed = parseIDCard(text);
       setPerson(p => ({
         ...p,
@@ -1016,7 +1047,7 @@ function ContractGenerator({ onClose }) {
       <div className="p-6 bg-gradient-to-r from-fuchsia-600 to-violet-600 rounded-t-3xl flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-white">⚡ Генератор договоров</h2>
-          <p className="text-fuchsia-200 text-xs mt-1">Загрузите шаблон + фото УД — данные заполнятся автоматически</p>
+          <p className="text-fuchsia-200 text-xs mt-1">Загрузите шаблон + PDF удостоверения — данные заполнятся автоматически</p>
         </div>
         <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
       </div>
@@ -1069,16 +1100,17 @@ function ContractGenerator({ onClose }) {
 
             {/* ID card upload + preview */}
             <div>
-              <p className="text-xs font-bold text-violet-600 uppercase tracking-wide mb-2">🪪 Удостоверение личности</p>
+              <p className="text-xs font-bold text-violet-600 uppercase tracking-wide mb-2">🪪 Удостоверение личности (PDF)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div
                   onClick={() => idRef.current?.click()}
-                  className="border-2 border-dashed border-violet-200 rounded-xl p-4 text-center cursor-pointer hover:border-violet-400 hover:bg-violet-50/40 transition">
-                  {idPreview
-                    ? <img src={idPreview} alt="УД" className="w-full h-24 object-cover rounded-lg mb-1" />
-                    : <div className="text-3xl mb-1">🪪</div>}
-                  <div className="text-xs text-violet-500 font-medium">{idPreview ? 'Нажмите чтобы заменить' : 'Загрузить фото УД'}</div>
-                  <input ref={idRef} type="file" accept="image/*" className="hidden" onChange={e => handleIDScan(e.target.files[0])} />
+                  className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition ${idFile ? 'border-emerald-300 bg-emerald-50' : 'border-violet-200 hover:border-violet-400 hover:bg-violet-50/40'}`}>
+                  <div className="text-3xl mb-1">{idFile ? '✅' : '📄'}</div>
+                  <div className="text-xs font-medium text-center truncate px-1" style={{color: idFile ? '#059669' : '#7c3aed'}}>
+                    {idFile ? idFile.name : 'Загрузить PDF удостоверения'}
+                  </div>
+                  {idFile && <div className="text-xs text-gray-400 mt-0.5">нажмите чтобы заменить</div>}
+                  <input ref={idRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={e => handleIDScan(e.target.files[0])} />
                 </div>
                 <div className="flex flex-col justify-center gap-1 text-xs text-gray-500 bg-gray-50 rounded-xl p-3">
                   {ocrLoading
